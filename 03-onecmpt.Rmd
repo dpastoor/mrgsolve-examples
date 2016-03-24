@@ -1,0 +1,135 @@
+---
+knit: bookdown::preview_chapter
+---
+
+# One Compartment Examples
+
+```{r libraries, warning=FALSE, message=FALSE}
+# required libraries
+library("PKPDmisc")
+library("knitr")
+library("mrgsolve")
+library("ggplot2")
+library("dplyr")
+```
+
+```{r globalsettings}
+opts_chunk$set(fig.height = 6, fig.width = 10, dpi = 300)
+```
+
+## One compartment IV
+
+### basic IV 
+
+
+```{r}
+code <- '
+$PARAM CL= 1.2, VC=14.3
+$CMT GUT CENT
+$ADVAN2
+$MAIN
+pred_CL = CL;
+pred_V = VC;
+'
+model <- mread(code=code, project="compiled_code", model="onecmpt_simple")
+
+```
+
+```{r}
+e <- ev(amt=100,rate=50,ii=12, addl=5, cmt=2)
+one_cmpt_iv_basic <- model %>% ev(e) %>%
+  Req(CENT) %>% mrgsim(end=72,delta=0.1,digits=5)
+
+```
+
+Data can be extracted using the `@data` attribute 
+
+```{r}
+one_cmpt_iv_basic@data %>% 
+  as.data.frame %>% 
+  head %>% 
+  kable
+```
+
+output from mrgsolve has an inbuilt plot method:
+
+```{r}
+plot(one_cmpt_iv_basic) 
+```
+
+When filtering, the result is a dataframe, so the `plot` method will
+no longer work, and instead it is ideal to turn to ggplot.
+
+```{r}
+one_cmpt_iv_basic %>% filter(time < 12) %>% 
+  ggplot(aes(x = time, y = CENT)) + geom_line()
+```
+
+#### Infusion at Steady State
+
+`ev` understands `ss=1` as an option
+
+```{r}
+e <- ev(amt=100,rate=100,ii=12, addl=5, cmt=2,ss=1)
+one_cmpt_iv_basic_ss <- model %>% ev(e) %>%
+  Req(CENT) %>% mrgsim(end=72,delta=0.1,digits=5)
+
+```
+
+```{r}
+one_cmpt_iv_basic_ss@data %>% 
+  as.data.frame %>% 
+  head %>% 
+  kable
+```
+
+```{r}
+plot(one_cmpt_iv_basic_ss) 
+```
+
+```{r}
+one_cmpt_iv_basic_ss %>% filter(time < 12) %>% 
+  ggplot(aes(x = time, y = CENT)) + geom_line()
+```
+
+#### capture individual parameter values
+
+```{r}
+one_cmpt_iv <- '
+$PARAM TVCL= 1.2, TVVC= 14.3 , WT=70, AGE=50
+$CMT GUT CENT
+$ADVAN2
+$MAIN
+double CLi = TVCL*pow(WT/70,0.45)*pow(AGE/50,-0.5);
+double Vi = TVVC*(WT/65);
+pred_CL = TVCL;
+pred_V = TVVC;
+$CAPTURE CLi Vi WT AGE
+'
+model <- mread( model="onecmpt", 
+                project="compiled_code",
+                code=one_cmpt_iv)
+```
+
+```{r}
+idata <- expand.idata(WT=seq(40,140),AGE=seq(30,80,10))
+out <- model %>% 
+  idata_set(idata) %>% 
+  mrgsim(end=-1)
+```
+
+```{r}
+out@data %>% as.data.frame %>% head %>% kable
+```
+
+```{r}
+out@data %>% as.data.frame %>%
+  mutate(AGE = factor(AGE)) %>%
+  ggplot(aes(x = WT, y = CLi, color = AGE)) +
+ geom_line() + theme_bw() + base_theme()
+```
+
+
+```{r}
+devtools::session_info()
+```
